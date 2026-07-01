@@ -165,9 +165,11 @@ body{
 }
 .bottom-bar .btn{flex:1}
 /* 题目导航 */
-.q-nav{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.q-nav{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0;max-height:0;overflow:hidden;transition:max-height .3s}
+.q-nav.open{max-height:300px}
+.q-nav-toggle{text-align:center;font-size:12px;color:var(--primary);padding:4px;cursor:pointer;margin-bottom:4px}
 .q-dot{
-  width:32px;height:32px;border-radius:50%;
+  width:28px;height:28px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;
   font-size:12px;font-weight:600;cursor:pointer;
   background:#f1f5f9;color:var(--text2);
@@ -214,7 +216,11 @@ body{
     <p style="font-size:14px;color:var(--text2);margin-bottom:8px">每次随机100道题 | 95单选 + 5多选</p>
     <p style="font-size:14px;color:var(--text2);margin-bottom:4px">行标130道题 30% | 大赛题库 70%</p>
     <p style="font-size:14px;color:var(--text2);margin-bottom:16px">答题时长 45 分钟</p>
-    <button class="btn btn-primary" onclick="startExam()" style="font-size:18px;padding:16px">开始答题</button>
+    <div style="margin-bottom:10px">
+    <button class="btn btn-primary" onclick="startExam(false)" style="font-size:18px;padding:16px;margin-bottom:8px">智能练习</button>
+    <button class="btn btn-outline btn-block" onclick="startExam(true)" style="font-size:15px;padding:12px">模拟考试（纯随机）</button>
+  </div>
+  <p style="font-size:11px;color:var(--text2);text-align:center;margin-bottom:12px">智能练习：遗忘曲线优先薄弱题 | 模拟考试：完全随机抽题</p>
   </div>
   <div style="display:flex;gap:12px">
     <button class="btn btn-outline" style="flex:1" onclick="showWrongBook()">错题本</button>
@@ -224,9 +230,10 @@ body{
 
 <!-- 答题页 -->
 <div class="page" id="page-exam">
-  <div class="timer" id="timer">45:00</div>
+  <div style="font-size:12px;text-align:center;color:var(--text2);margin-bottom:4px" id="modeLabel"></div><div class="timer" id="timer">45:00</div>
   <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
   <div class="progress-text" id="progressText">0/100</div>
+  <div class="q-nav-toggle" onclick="toggleQNav()" id="qNavToggle">展开题目导航 ▼</div>
   <div class="q-nav" id="qNav"></div>
   <div id="questionArea"></div>
   <div class="nav-btns">
@@ -398,26 +405,30 @@ function updateHomeStats(){
 function showHome(){showPage('home');updateHomeStats()}
 
 // ========== 开始答题 ==========
-function startExam(){
+function startExam(examMode){
+  if(examMode === undefined) examMode = false;
   appData = loadData();
   examAnswers = {};
   examMarked = {};
   currentQIndex = 0;
   timerSeconds = 2700;
   examSubmitted = false;
+  window._examMode = examMode;
   
   // 抽取题目：bank1占30%=30道，bank2占70%=70道
   // bank1: 30道单选
-  var bank1Sample = weightedSample(bank1Questions, 30, appData);
+  var bank1Sample = examMode ? randomSample(bank1Questions, 30) : weightedSample(bank1Questions, 30, appData);
   // bank2: 65道单选 + 5道多选
-  var bank2SingleSample = weightedSample(bank2Single, 65, appData);
-  var bank2MultiSample = weightedSample(bank2Multi, 5, appData);
+  var bank2SingleSample = examMode ? randomSample(bank2Single, 65) : weightedSample(bank2Single, 65, appData);
+  var bank2MultiSample = examMode ? randomSample(bank2Multi, 5) : weightedSample(bank2Multi, 5, appData);
   
   examQuestions = [].concat(bank1Sample, bank2SingleSample, bank2MultiSample);
   // 打乱顺序
   shuffleArray(examQuestions);
   
   showPage('exam');
+  document.getElementById('modeLabel').textContent = examMode ? '模拟考试模式（纯随机）' : '智能练习模式（遗忘曲线）';
+  document.getElementById('modeLabel').style.color = examMode ? 'var(--danger)' : 'var(--primary)';
   renderQNav();
   renderQuestion();
   startTimer();
@@ -425,6 +436,11 @@ function startExam(){
   window.scrollTo(0,0);
 }
 
+function randomSample(arr, n){
+  var pool = arr.slice();
+  shuffleArray(pool);
+  return pool.slice(0, Math.min(n, pool.length));
+}
 function shuffleArray(arr){
   for(var i=arr.length-1;i>0;i--){
     var j = Math.floor(Math.random()*(i+1));
@@ -455,6 +471,12 @@ function updateTimerDisplay(){
 }
 
 // ========== 题目导航 ==========
+function toggleQNav(){
+  var nav = document.getElementById('qNav');
+  var toggle = document.getElementById('qNavToggle');
+  nav.classList.toggle('open');
+  toggle.textContent = nav.classList.contains('open') ? '收起题目导航 ▲' : '展开题目导航 ▼';
+}
 function renderQNav(){
   var html = '';
   for(var i=0;i<examQuestions.length;i++){
@@ -466,6 +488,14 @@ function renderQNav(){
     html += '<span class="'+cls+'" onclick="goToQuestion('+i+')">'+(i+1)+'</span>';
   }
   document.getElementById('qNav').innerHTML = html;
+  // 如果导航已展开，滚动到当前题目位置
+  var nav = document.getElementById('qNav');
+  if(nav.classList.contains('open')){
+    setTimeout(function(){
+      var cur = nav.querySelector('.current');
+      if(cur) cur.scrollIntoView({behavior:'smooth',block:'nearest'});
+    },100);
+  }
 }
 function goToQuestion(i){
   currentQIndex = i;
@@ -519,11 +549,22 @@ function selectOption(letter){
     else ans.push(letter);
     ans.sort();
     examAnswers[q.id] = ans;
+    renderQuestion();
+    renderQNav();
   } else {
     examAnswers[q.id] = letter;
+    renderQuestion();
+    renderQNav();
+    // 单选选完后自动跳转下一题
+    if(currentQIndex < examQuestions.length - 1){
+      setTimeout(function(){
+        currentQIndex++;
+        renderQNav();
+        renderQuestion();
+        window.scrollTo(0,0);
+      }, 350);
+    }
   }
-  renderQuestion();
-  renderQNav();
 }
 
 function updateProgress(){
