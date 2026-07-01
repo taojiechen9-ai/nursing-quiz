@@ -199,6 +199,33 @@ body{
 .confirm-dialog p{font-size:14px;color:var(--text2);margin-bottom:20px}
 .confirm-dialog .btns{display:flex;gap:10px}
 .confirm-dialog .btns .btn{flex:1}
+.search-box{
+  width:100%;padding:10px 14px;border:2px solid var(--border);
+  border-radius:var(--radius);font-size:14px;margin-bottom:12px;
+  outline:none;transition:border-color .2s;
+}
+.search-box:focus{border-color:var(--primary)}
+.bank-tag{
+  display:inline-block;padding:2px 8px;border-radius:20px;
+  font-size:10px;font-weight:600;margin-left:6px;vertical-align:middle;
+}
+.bank-tag-b1{background:#fef3c7;color:#92400e}
+.bank-tag-b2{background:#dbeafe;color:#1e40af}
+.all-q-item{
+  background:var(--card);border-radius:var(--radius);
+  padding:12px 14px;margin-bottom:6px;box-shadow:var(--shadow);
+  font-size:13.5px;line-height:1.5;cursor:pointer;transition:background .15s;
+}
+.all-q-item:active{background:#f8fafc}
+.all-q-item .q-header{display:flex;align-items:flex-start;gap:8px}
+.all-q-item .q-idx{font-size:12px;color:var(--text2);flex-shrink:0;min-width:28px}
+.chart-bar-wrap{display:flex;align-items:flex-end;gap:6px;height:80px;margin-top:8px}
+.chart-bar{flex:1;background:var(--primary);border-radius:3px 3px 0 0;min-width:6px;transition:height .3s}
+.chart-bar-label{font-size:10px;color:var(--text2);text-align:center;margin-top:2px}
+.perf-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.perf-box{padding:12px;background:#f8fafc;border-radius:10px;text-align:center}
+.perf-box .val{font-size:20px;font-weight:700}
+.perf-box .lbl{font-size:11px;color:var(--text2);margin-top:2px}
 </style>
 <link rel="manifest" href="/quiz_app.webmanifest">
 </head>
@@ -222,9 +249,10 @@ body{
   </div>
   <p style="font-size:11px;color:var(--text2);text-align:center;margin-bottom:12px">智能练习：遗忘曲线优先薄弱题 | 模拟考试：完全随机抽题</p>
   </div>
-  <div style="display:flex;gap:12px">
-    <button class="btn btn-outline" style="flex:1" onclick="showWrongBook()">错题本</button>
-    <button class="btn btn-outline" style="flex:1" onclick="showStats()">学习统计</button>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <button class="btn btn-outline" style="flex:1;min-width:90px" onclick="showWrongBook()">错题本</button>
+    <button class="btn btn-outline" style="flex:1;min-width:90px" onclick="showStats()">学习统计</button>
+    <button class="btn btn-outline" style="flex:1;min-width:90px" onclick="showAllQuestions()">查看所有题</button>
   </div>
 </div>
 
@@ -268,6 +296,20 @@ body{
 <!-- 统计页 -->
 <div class="page" id="page-stats">
   <div id="statsContent"></div>
+  <button class="btn btn-outline btn-block" style="margin-top:12px" onclick="showHome()">返回首页</button>
+</div>
+
+
+<!-- 查看所有题 -->
+<div class="page" id="page-allq">
+  <div class="tab-bar">
+    <div class="tab active" onclick="switchAllQTab('all')" id="aqtab-all">全部</div>
+    <div class="tab" onclick="switchAllQTab('bank1')" id="aqtab-bank1">行标题库</div>
+    <div class="tab" onclick="switchAllQTab('bank2')" id="aqtab-bank2">大赛题库</div>
+    <div class="tab" onclick="switchAllQTab('wrong')" id="aqtab-wrong">仅错题</div>
+  </div>
+  <input class="search-box" id="allQSearch" placeholder="搜索题目关键词…" oninput="renderAllQuestions()">
+  <div id="allQContent"></div>
   <button class="btn btn-outline btn-block" style="margin-top:12px" onclick="showHome()">返回首页</button>
 </div>
 
@@ -343,7 +385,7 @@ function getWeight(qid, data){
   var interval = w.interval || 1; // 天
   var daysSince = lastCorrect ? (now - lastCorrect) / (1000*60*60*24) : 999;
   // 遗忘程度 = 已过天数 / 间隔天数，范围 [0.15, 1.0]
-  var forgetting = Math.min(1.0, Math.max(0.15, daysSince / (interval * 1.5)));
+  var forgetting = Math.min(1.0, Math.max(0.25, daysSince / (interval * 1.5)));
   return forgetting;
 }
 
@@ -811,18 +853,83 @@ function findQuestionById(qid){
 function showStats(){
   appData = loadData();
   showPage('stats');
+  var hist = appData.history || [];
+  var totalDone = appData.totalDone || 0;
+  var totalCorrect = appData.totalCorrect || 0;
+  var totalWrong = appData.totalWrong || 0;
+  var examCount = hist.length;
+  var wrongBookSize = (appData.wrongBook||[]).length;
+  var rate = totalDone ? Math.round(totalCorrect/totalDone*100) : 0;
+  var weights = appData.weights || {};
+
+  // 概览
   var html = '<div class="card"><h3 style="margin-bottom:12px">学习统计</h3>';
-  html += '<div class="stat-row" style="margin-bottom:12px">';
-  html += '<div class="stat-item"><div class="num">'+(appData.totalDone||0)+'</div><div class="label">总做题数</div></div>';
-  var rate = appData.totalDone ? Math.round((appData.totalCorrect||0)/appData.totalDone*100) : 0;
+  html += '<div class="stat-row" style="margin-bottom:8px">';
+  html += '<div class="stat-item"><div class="num">'+totalDone+'</div><div class="label">总做题数</div></div>';
   html += '<div class="stat-item"><div class="num">'+rate+'%</div><div class="label">总正确率</div></div>';
-  html += '<div class="stat-item"><div class="num">'+((appData.wrongBook||[]).length)+'</div><div class="label">错题数</div></div>';
+  html += '<div class="stat-item"><div class="num">'+wrongBookSize+'</div><div class="label">错题数</div></div>';
+  html += '</div>';
+  html += '<div class="stat-row">';
+  html += '<div class="stat-item"><div class="num">'+examCount+'</div><div class="label">考试次数</div></div>';
+  html += '<div class="stat-item"><div class="num">'+totalCorrect+'</div><div class="label">答对次数</div></div>';
+  html += '<div class="stat-item"><div class="num">'+totalWrong+'</div><div class="label">答错次数</div></div>';
   html += '</div></div>';
-  
-  var history = appData.history || [];
-  if(history.length > 0){
+
+  // 题库表现：bank1 vs bank2
+  var b1QIds = {}, b2QIds = {};
+  for(var i=0;i<allQuestions.length;i++){
+    if(allQuestions[i].bank === 1) b1QIds[allQuestions[i].id]=true;
+    else b2QIds[allQuestions[i].id]=true;
+  }
+  var b1Correct = 0, b1Done = 0, b2Correct = 0, b2Done = 0;
+  var scCorrect = 0, scDone = 0, mcCorrect = 0, mcDone = 0;
+  var bank1Total = Object.keys(b1QIds).length;
+  var bank2Total = Object.keys(b2QIds).length;
+  for(var k in weights){
+    var w = weights[k];
+    if(!w) continue;
+    var done = (w.totalCorrect||0)+(w.totalWrong||0);
+    if(b1QIds[k]){ b1Done += done; b1Correct += (w.totalCorrect||0); }
+    if(b2QIds[k]){ b2Done += done; b2Correct += (w.totalCorrect||0); }
+    var q = findQuestionById(k);
+    if(q){
+      if(q.type === 'single'){ scDone += done; scCorrect += (w.totalCorrect||0); }
+      else{ mcDone += done; mcCorrect += (w.totalCorrect||0); }
+    }
+  }
+  html += '<div class="card"><h4 style="margin-bottom:8px">各题库表现</h4>';
+  html += '<div class="perf-grid">';
+  html += '<div class="perf-box"><div class="val">'+bank1Total+'</div><div class="lbl" style="color:#92400e">行标题库 题目数</div></div>';
+  html += '<div class="perf-box"><div class="val">'+bank2Total+'</div><div class="lbl" style="color:#1e40af">大赛题库 题目数</div></div>';
+  html += '<div class="perf-box"><div class="val">'+(scDone?Math.round(scCorrect/scDone*100):0)+'%</div><div class="lbl">单选正确率</div></div>';
+  html += '<div class="perf-box"><div class="val">'+(mcDone?Math.round(mcCorrect/mcDone*100):0)+'%</div><div class="lbl">多选正确率</div></div>';
+  html += '</div></div>';
+
+  // 考试趋势图
+  if(hist.length > 0){
+    html += '<div class="card"><h4 style="margin-bottom:8px">考试趋势（最近10次）</h4>';
+    var recent10 = hist.slice().reverse().slice(0,10).reverse();
+    var maxScore = 0;
+    for(var i=0;i<recent10.length;i++){ maxScore = Math.max(maxScore, recent10[i].score); }
+    html += '<div class="chart-bar-wrap">';
+    for(var i=0;i<recent10.length;i++){
+      var h = recent10[i];
+      var hPct = maxScore>0 ? Math.round(h.score/maxScore*70)+10 : 10;
+      var bc = h.score>=70 ? 'var(--success)' : h.score>=50 ? 'var(--warning)' : 'var(--danger)';
+      var d = new Date(h.date);
+      var label = (d.getMonth()+1)+'/'+d.getDate();
+      html += '<div style="flex:1;text-align:center">';
+      html += '<div style="height:'+hPct+'px;background:'+bc+';border-radius:3px 3px 0 0;transition:height .3s" title="'+h.score+'分"></div>';
+      html += '<div class="chart-bar-label">'+label+'</div>';
+      html += '</div>';
+    }
+    html += '</div></div>';
+  }
+
+  // 最近记录表格
+  if(hist.length > 0){
     html += '<div class="card"><h4 style="margin-bottom:8px">最近记录</h4>';
-    var recent = history.slice().reverse().slice(0,10);
+    var recent = hist.slice().reverse().slice(0,10);
     for(var i=0;i<recent.length;i++){
       var h = recent[i];
       var d = new Date(h.date);
@@ -835,9 +942,8 @@ function showStats(){
     }
     html += '</div>';
   }
-  
-  // 权重分布
-  var weights = appData.weights || {};
+
+  // 掌握程度
   var mastered = 0, learning = 0, newQ = 0;
   for(var i=0;i<allQuestions.length;i++){
     var w = weights[allQuestions[i].id];
@@ -859,8 +965,97 @@ function showStats(){
   html += '<span><span style="display:inline-block;width:10px;height:10px;background:#fcd34d;border-radius:2px;margin-right:4px"></span>学习中 '+learning+'</span>';
   html += '<span><span style="display:inline-block;width:10px;height:10px;background:#4ade80;border-radius:2px;margin-right:4px"></span>已掌握 '+mastered+'</span>';
   html += '</div></div>';
-  
+
   document.getElementById('statsContent').innerHTML = html;
+}
+
+
+// ========== 查看所有题 ==========
+var _allQFilter = 'all';
+function switchAllQTab(tab){
+  _allQFilter = tab;
+  document.querySelectorAll('#page-allq .tab').forEach(function(t){t.classList.remove('active')});
+  document.getElementById('aqtab-'+tab).classList.add('active');
+  document.getElementById('allQSearch').value = '';
+  renderAllQuestions();
+}
+function showAllQuestions(){
+  appData = loadData();
+  showPage('allq');
+  _allQFilter = 'all';
+  document.querySelectorAll('#page-allq .tab').forEach(function(t){t.classList.remove('active')});
+  document.getElementById('aqtab-all').classList.add('active');
+  document.getElementById('allQSearch').value = '';
+  renderAllQuestions();
+}
+function renderAllQuestions(){
+  var filter = _allQFilter;
+  var search = (document.getElementById('allQSearch').value || '').toLowerCase();
+  var weights = appData.weights || {};
+  var wrongSet = {};
+  (appData.wrongBook||[]).forEach(function(id){wrongSet[id]=true});
+
+  var pool = [];
+  for(var i=0;i<allQuestions.length;i++){
+    var q = allQuestions[i];
+    // 筛选
+    if(filter==='bank1' && q.bank!==1) continue;
+    if(filter==='bank2' && q.bank!==2) continue;
+    if(filter==='wrong' && !wrongSet[q.id]) continue;
+    if(search && q.question.toLowerCase().indexOf(search)<0) continue;
+    pool.push({q:q, idx:i});
+  }
+
+  if(pool.length === 0){
+    document.getElementById('allQContent').innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>没有匹配的题目</p></div>';
+    return;
+  }
+
+  var html = '';
+  for(var i=0;i<pool.length;i++){
+    var item = pool[i];
+    var q = item.q;
+    var w = weights[q.id];
+    var done = w ? (w.totalCorrect||0)+(w.totalWrong||0) : 0;
+    var correct = w ? (w.totalCorrect||0) : 0;
+    var acc = done>0 ? Math.round(correct/done*100)+'%' : '-';
+    var bankTag = q.bank===1 ? '<span class="bank-tag bank-tag-b1">行标</span>' : '<span class="bank-tag bank-tag-b2">大赛</span>';
+    var typeTag = '<span class="tag '+(q.type==='multi'?'tag-multi':'tag-single')+'">'+(q.type==='multi'?'多选':'单选')+'</span>';
+    var isWrong = wrongSet[q.id] ? ' 🔴' : '';
+    var accColor = done>0 ? (correct/done>=0.7 ? 'var(--success)' : 'var(--danger)') : 'var(--text2)';
+
+    html += '<div class="all-q-item" onclick="showAllQDetail('+item.idx+')">';
+    html += '<div class="q-header">';
+    html += '<span class="q-idx">#'+(item.idx+1)+'</span>';
+    html += '<span style="flex:1;font-size:13.5px;line-height:1.4">'+escapeHtml(q.question)+isWrong+'</span>';
+    html += '</div>';
+    html += '<div style="margin-top:6px;display:flex;gap:6px;align-items:center;font-size:12px">';
+    html += typeTag + ' ' + bankTag;
+    html += '<span style="color:'+accColor+';margin-left:auto">正确率 '+acc+'</span>';
+    html += '</div>';
+    html += '</div>';
+  }
+
+  html += '<div style="text-align:center;font-size:12px;color:var(--text2);margin-top:12px">共 '+pool.length+' 题 | 点击可查看详情</div>';
+  document.getElementById('allQContent').innerHTML = html;
+}
+function showAllQDetail(idx){
+  var q = allQuestions[idx];
+  var w = appData.weights[q.id] || {};
+  var done = (w.totalCorrect||0)+(w.totalWrong||0);
+  var correct = w.totalCorrect||0;
+  var html = '<div class="review-card"><div class="meta">#'+(idx+1)+' | '+(q.bank===1?'行标题库':'大赛题库')+' | '+(q.type==='multi'?'多选题':'单选题')+'</div>';
+  html += '<div class="q-text" style="margin-bottom:6px">'+escapeHtml(q.question)+'</div>';
+  for(var i=0;i<q.options.length;i++){
+    var opt = q.options[i];
+    var letter = String.fromCharCode(65+i);
+    var isAnswer = q.answer.indexOf(letter)>=0;
+    html += '<div class="option'+(isAnswer?' correct':'')+'"><span class="letter">'+letter+'</span><span>'+escapeHtml(opt.replace(/^[A-E][、，。,.\s]*/,''))+'</span></div>';
+  }
+  html += '<div style="margin-top:8px;font-size:12px;color:var(--text2)">正确率: '+(done>0?Math.round(correct/done*100)+'% ('+correct+'/'+done+')':'-')+' | 答题间隔: '+(w.interval||0)+'天 | 难度系数: '+(w.easeFactor||2.5).toFixed(1)+'</div>';
+  html += '</div>';
+  html += '<button class="btn btn-outline btn-block" style="margin-top:8px" onclick="renderAllQuestions()">返回列表</button>';
+  document.getElementById('allQContent').innerHTML = html;
 }
 
 // ========== 工具函数 ==========
